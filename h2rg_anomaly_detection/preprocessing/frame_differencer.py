@@ -5,6 +5,7 @@ from typing import Dict, Union
 from astropy.io import fits
 import h5py
 from tqdm import tqdm
+import time 
 
 class FrameDifferencer:
     """Computes frame differences for anomaly detection."""
@@ -86,3 +87,52 @@ class FrameDifferencer:
             diff_stack[i] = frames[i] - reference_frame
         
         return diff_stack
+    
+
+    def compute_tif_differences(self, detector_frames: np.ndarray) -> Dict:
+        """
+        Compute frame differences for CASE TIF detector arrays.
+        
+        Args:
+            detector_frames: numpy array of shape (n_frames, height, width)
+        
+        Returns:
+            Dict with differences, frame_times, reference_frame, total_frames
+        """
+        self.logger.info(f"Processing {len(detector_frames)} TIF frames")
+        start_time = time.time()
+        
+        detector_frames = np.array(detector_frames)
+        
+        # Adjust frame count for test mode
+        if hasattr(self, 'test_mode') and self.test_mode:
+            max_frames = min(getattr(self, 'test_frames', 10) + 1, len(detector_frames))
+            detector_frames = detector_frames[:max_frames]
+            self.logger.info(f"TEST MODE: Processing only {max_frames} frames ({max_frames-1} differences)")
+        
+        # Get reference frame (frame 0) and apply correction
+        frame_0 = detector_frames[0].astype(np.float32)
+        reference_frame = self.reference_corrector.correct_frame(frame_0)
+        
+        # Apply correction to all remaining frames
+        remaining_frames = detector_frames[1:].astype(np.float32)
+        corrected_frames = np.empty_like(remaining_frames)
+        
+        for i in range(len(remaining_frames)):
+            corrected_frames[i] = self.reference_corrector.correct_frame(remaining_frames[i])
+        
+        # Compute differences
+        diff_stack = []
+        for i, corrected_frame in enumerate(corrected_frames):
+            diff = corrected_frame - reference_frame
+            diff_stack.append(diff)
+        
+        total_time = time.time() - start_time
+        self.logger.info(f"Total TIF processing time: {total_time:.2f}s for {len(diff_stack)} frames")
+        
+        return {
+            'differences': np.array(diff_stack),
+            'frame_times': np.arange(1, len(diff_stack) + 1),
+            'reference_frame': reference_frame,
+            'total_frames': len(diff_stack)
+        }

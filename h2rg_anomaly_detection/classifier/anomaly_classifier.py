@@ -31,15 +31,22 @@ class AnomalyClassifier:
             'unknown': []
         }
         
-        # Detect cosmic rays
-        cr_detection = self.cosmic_ray_detector.detect(temporal_data, diff_stack)
-        cr_classified = self.cosmic_ray_detector.classify(cr_detection)
-        results['cosmic_rays'] = cr_classified
+        # # Detect cosmic rays
+        # cr_detection = self.cosmic_ray_detector.detect(temporal_data, diff_stack)
+        # cr_classified = self.cosmic_ray_detector.classify(cr_detection)
+        # results['cosmic_rays'] = cr_classified
 
         # # Detect telegraph noise
         # rtn_detection = self.rtn_detector.detect(temporal_data, diff_stack)
         # rtn_classified = self.rtn_detector.classify(rtn_detection)
         # results['telegraph_noise'] = rtn_classified
+ 
+        # Detect snowballs
+        sb_detection = self.snowball_detector.detect(temporal_data, diff_stack)
+        sb_classified = self.snowball_detector.classify(sb_detection)
+        results['snowballs'] = sb_classified
+
+        print(results)
 
         return results
         

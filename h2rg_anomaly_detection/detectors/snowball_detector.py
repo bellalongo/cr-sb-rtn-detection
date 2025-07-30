@@ -161,16 +161,10 @@ class SnowballDetector:
     def __init__(self, config):
         self.config = config
         self.logger = logging.getLogger(__name__)
-    
+
     def detect(self, temporal_data: Dict, diff_stack: np.ndarray) -> Dict:
         """
-        Detect snowball candidates using JWST methodology.
-        
-        Key characteristics from paper:
-        1. Snowballs always have a saturated core
-        2. They show exponential decay with radius
-        3. They create charge spilling rings
-        4. They have diffuse halos extending beyond jump detection
+        Detect snowball candidates using JWST methodology with working fallback.
         """
         self.logger.info("Starting snowball detection...")
         
@@ -180,36 +174,238 @@ class SnowballDetector:
         saturation_map = temporal_data.get('saturation_map', np.zeros_like(first_appearance))
         jump_map = temporal_data.get('jump_map', np.zeros_like(first_appearance))
         
-        # Step 1: Find newly saturated pixels (core requirement)
-        # Snowballs must have saturated cores that appear suddenly
-        newly_saturated = self._find_newly_saturated_pixels(
-            saturation_map, first_appearance, diff_stack
-        )
+        # DEBUG: Print what we have
+        print(f"DEBUG: first_appearance range: {np.min(first_appearance)} to {np.max(first_appearance)}")
+        print(f"DEBUG: max_intensity range: {np.min(max_intensity)} to {np.max(max_intensity)}")
+        print(f"DEBUG: saturation_map sum: {np.sum(saturation_map)}")
+        print(f"DEBUG: jump_map sum: {np.sum(jump_map)}")
+        print(f"DEBUG: High intensity pixels (>1000): {np.sum(max_intensity > 1000)}")
+        print(f"DEBUG: Sudden appearance pixels: {np.sum(first_appearance > 0)}")
         
-        # Step 2: Find newly flagged jump pixels around saturated cores
-        newly_jumped = self._find_newly_jumped_pixels(
-            jump_map, first_appearance, diff_stack
-        )
+        candidates = []
+        newly_saturated = {}
+        newly_jumped = {}
         
-        # Step 3: Associate jump regions with saturated cores
-        snowball_candidates = self._associate_jumps_with_saturation(
-            newly_saturated, newly_jumped, diff_stack
-        )
+        # Try JWST methodology only if we have the required data
+        if np.sum(saturation_map) > 0 or np.sum(jump_map) > 0:
+            print("DEBUG: Trying JWST method...")
+            
+            # Step 1: Find newly saturated pixels 
+            newly_saturated = self._find_newly_saturated_pixels(
+                saturation_map, first_appearance, diff_stack
+            )
+            print(f"DEBUG: Found {len(newly_saturated)} saturated regions")
+            
+            # Step 2: Find newly flagged jump pixels
+            newly_jumped = self._find_newly_jumped_pixels(
+                jump_map, first_appearance, diff_stack
+            )
+            print(f"DEBUG: Found {len(newly_jumped)} jump regions")
+            
+            # Step 3: Associate jump regions with saturated cores
+            if newly_saturated or newly_jumped:
+                snowball_candidates = self._associate_jumps_with_saturation(
+                    newly_saturated, newly_jumped, diff_stack
+                )
+                
+                # Step 4: Analyze each candidate
+                for candidate in snowball_candidates:
+                    if self._validate_snowball_characteristics(candidate, diff_stack):
+                        candidates.append(candidate)
         
-        # Step 4: Analyze each candidate for snowball characteristics
-        validated_candidates = []
-        for candidate in snowball_candidates:
-            if self._validate_snowball_characteristics(candidate, diff_stack):
-                validated_candidates.append(candidate)
+        # ALWAYS try simple detection as well (not just fallback)
+        print("DEBUG: Trying simple detection...")
+        simple_candidates = self._simple_snowball_detection(temporal_data, diff_stack)
+        print(f"DEBUG: Simple method found {len(simple_candidates)} candidates")
         
-        self.logger.info(f"Found {len(validated_candidates)} snowball candidates")
+        # Add simple candidates to the list
+        candidates.extend(simple_candidates)
+        
+        self.logger.info(f"Found {len(candidates)} total snowball candidates")
         
         return {
-            'candidates': validated_candidates,
-            'num_candidates': len(validated_candidates),
+            'candidates': candidates,
+            'num_candidates': len(candidates),
             'newly_saturated': newly_saturated,
             'newly_jumped': newly_jumped
         }
+
+    def _simple_snowball_detection(self, temporal_data: Dict, diff_stack: np.ndarray) -> List[Dict]:
+        """Simple snowball detection with proper format for plotting."""
+        from scipy import ndimage
+        from skimage.measure import regionprops
+        
+        first_appearance = temporal_data['first_appearance']
+        max_intensity = temporal_data['max_intensity']
+        
+        print("DEBUG: Starting simple snowball detection...")
+        
+        # Find high-intensity regions that appear suddenly
+        sudden_appearance = first_appearance > 0
+        high_intensity = max_intensity > 1000
+        
+        candidate_mask = sudden_appearance & high_intensity
+        print(f"DEBUG: Simple detection mask has {np.sum(candidate_mask)} pixels")
+        
+        if not np.any(candidate_mask):
+            return []
+        
+        # Find connected components
+        labeled, num_features = ndimage.label(candidate_mask)
+        print(f"DEBUG: Found {num_features} connected components")
+        
+        candidates = []
+        for i in range(1, num_features + 1):
+            component_mask = labeled == i
+            area = np.sum(component_mask)
+            
+            # Size filter
+            if not (5 <= area <= 5000):
+                continue
+            
+            try:
+                props = regionprops(component_mask.astype(int))[0]
+            except IndexError:
+                continue
+            
+            # Calculate circularity
+            if props.perimeter > 0:
+                circularity = 4 * np.pi * props.area / (props.perimeter ** 2)
+            else:
+                circularity = 0
+            
+            # Lenient filters
+            if circularity < 0.1 or props.eccentricity > 0.95:
+                continue
+            
+            # Get first frame for this component
+            first_frame = int(np.min(first_appearance[component_mask]))
+            
+            # Create candidate with ALL the fields the plotting code expects
+            candidate = {
+                'type': 'snowball_candidate',
+                'detection_method': 'simple',
+                
+                # Position data (multiple formats for compatibility)
+                'centroid': props.centroid,  # Main position for plotting
+                'position': props.centroid,  # Alternative position format
+                
+                # Timing data
+                'frame': first_frame,
+                'first_frame': first_frame,  # Expected by plotting code
+                
+                # Intensity data
+                'max_intensity': float(np.max(max_intensity[component_mask])),
+                'mean_intensity': float(np.mean(max_intensity[component_mask])),
+                
+                # Shape data
+                'area': area,
+                'circularity': circularity,
+                'eccentricity': props.eccentricity,
+                'equivalent_diameter': props.equivalent_diameter,
+                'bbox': props.bbox,
+                'mask': component_mask,
+                
+                # Time series data (extract from diff_stack)
+                'time_series': diff_stack[:, int(props.centroid[0]), int(props.centroid[1])],
+                
+                # Jump data (for compatibility with JWST method)
+                'jump_data': {
+                    'mask': component_mask,
+                    'area': area,
+                    'centroid': props.centroid,
+                    'ellipse': {
+                        'center': props.centroid,
+                        'major_axis_length': props.major_axis_length,
+                        'minor_axis_length': props.minor_axis_length,
+                        'orientation': props.orientation,
+                        'eccentricity': props.eccentricity,
+                        'area': area
+                    }
+                }
+            }
+            
+            candidates.append(candidate)
+            print(f"DEBUG: ✅ FOUND SNOWBALL: area={area}, circularity={circularity:.3f}, "
+                f"intensity={candidate['max_intensity']:.1f}, "
+                f"centroid=({props.centroid[0]:.1f}, {props.centroid[1]:.1f})")
+        
+        return candidates
+    
+    # def detect(self, temporal_data: Dict, diff_stack: np.ndarray) -> Dict:
+    #     """
+    #     Detect snowball candidates using JWST methodology.
+        
+    #     Key characteristics from paper:
+    #     1. Snowballs always have a saturated core
+    #     2. They show exponential decay with radius
+    #     3. They create charge spilling rings
+    #     4. They have diffuse halos extending beyond jump detection
+    #     """
+    #     self.logger.info("Starting snowball detection...")
+
+    #     # Extract temporal data
+    #     first_appearance = temporal_data['first_appearance']
+    #     max_intensity = temporal_data['max_intensity']
+    #     saturation_map = temporal_data.get('saturation_map', np.zeros_like(first_appearance))
+    #     jump_map = temporal_data.get('jump_map', np.zeros_like(first_appearance))
+        
+    #     # DEBUG: Print what we have
+    #     print(f"DEBUG: first_appearance range: {np.min(first_appearance)} to {np.max(first_appearance)}")
+    #     print(f"DEBUG: max_intensity range: {np.min(max_intensity)} to {np.max(max_intensity)}")
+    #     print(f"DEBUG: saturation_map sum: {np.sum(saturation_map)}")
+    #     print(f"DEBUG: jump_map sum: {np.sum(jump_map)}")
+    #     print(f"DEBUG: High intensity pixels (>1000): {np.sum(max_intensity > 1000)}")
+    #     print(f"DEBUG: Sudden appearance pixels: {np.sum(first_appearance > 0)}")
+        
+    #     # Step 1: Find newly saturated pixels (core requirement)
+    #     newly_saturated = self._find_newly_saturated_pixels(
+    #         saturation_map, first_appearance, diff_stack
+    #     )
+    #     print(f"DEBUG: Found {len(newly_saturated)} saturated regions")
+        
+    #     # Step 2: Find newly flagged jump pixels around saturated cores
+    #     newly_jumped = self._find_newly_jumped_pixels(
+    #         jump_map, first_appearance, diff_stack
+    #     )
+    #     print(f"DEBUG: Found {len(newly_jumped)} jump regions")
+        
+    #     # # Extract temporal data
+    #     # first_appearance = temporal_data['first_appearance']
+    #     # max_intensity = temporal_data['max_intensity']
+    #     # saturation_map = temporal_data.get('saturation_map', np.zeros_like(first_appearance))
+    #     # jump_map = temporal_data.get('jump_map', np.zeros_like(first_appearance))
+        
+    #     # # Step 1: Find newly saturated pixels (core requirement)
+    #     # # Snowballs must have saturated cores that appear suddenly
+    #     # newly_saturated = self._find_newly_saturated_pixels(
+    #     #     saturation_map, first_appearance, diff_stack
+    #     # )
+        
+    #     # # Step 2: Find newly flagged jump pixels around saturated cores
+    #     # newly_jumped = self._find_newly_jumped_pixels(
+    #     #     jump_map, first_appearance, diff_stack
+    #     # )
+        
+    #     # Step 3: Associate jump regions with saturated cores
+    #     snowball_candidates = self._associate_jumps_with_saturation(
+    #         newly_saturated, newly_jumped, diff_stack
+    #     )
+        
+    #     # Step 4: Analyze each candidate for snowball characteristics
+    #     validated_candidates = []
+    #     for candidate in snowball_candidates:
+    #         if self._validate_snowball_characteristics(candidate, diff_stack):
+    #             validated_candidates.append(candidate)
+        
+    #     self.logger.info(f"Found {len(validated_candidates)} snowball candidates")
+        
+    #     return {
+    #         'candidates': validated_candidates,
+    #         'num_candidates': len(validated_candidates),
+    #         'newly_saturated': newly_saturated,
+    #         'newly_jumped': newly_jumped
+    #     }
     
     def _find_newly_saturated_pixels(self, saturation_map: np.ndarray, 
                                    first_appearance: np.ndarray,
@@ -574,8 +770,10 @@ class SnowballDetector:
         for candidate in candidates['candidates']:
             # Calculate confidence based on multiple factors
             confidence = self._calculate_snowball_confidence(candidate)
+
+            print(candidate, confidence)
             
-            if confidence > getattr(self.config, 'snowball_min_confidence', 0.6):
+            if confidence > getattr(self.config, 'snowball_min_confidence', 0.2):
                 classified_event = {
                     'type': 'snowball',
                     'confidence': confidence,

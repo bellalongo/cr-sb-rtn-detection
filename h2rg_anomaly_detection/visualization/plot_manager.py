@@ -464,6 +464,204 @@ class PlotManager:
 
         #         print(event)
 
+        """
+            all good plots below here
+        """
+        # events = exposure_results['cosmic_rays']
+        # if events:
+        #     import matplotlib.patches as patches
+            
+        #     sns.set_theme(style="white", palette="Blues")
+        #     palette = sns.color_palette('Blues', 6)
+            
+        #     # Create figure for the full exposure
+        #     fig, ax = plt.subplots(1, 1, figsize=(12, 10))
+            
+        #     # Show the original exposure (use a representative frame or mean/max projection)
+        #     # You can choose which frame to display - here using first_frame of first event as example
+        #     display_frame = events[0].get('first_frame', data_cube.shape[0] // 2) if events else data_cube.shape[0] // 2
+            
+        #     # Display the full detector image
+        #     im = ax.imshow(data_cube[display_frame], cmap='Blues', aspect='equal', origin='lower')
+        #     ax.set_title(f'Exposure Frame {display_frame} with Cosmic Ray Detections', fontsize=14)
+        #     ax.set_xlabel('X pixel')
+        #     ax.set_ylabel('Y pixel')
+            
+        #     # Add colorbar
+        #     cbar = plt.colorbar(im, ax=ax, label='DN')
+            
+        #     # Overlay cosmic ray detections
+        #     for i, event in enumerate(events):
+        #         if 'centroid' in event:
+        #             y, x = event['centroid']
+        #         elif 'position' in event:
+        #             y, x = event['position']
+        #         else:
+        #             continue
+                    
+        #         # Get the spatial extent (size) of the cosmic ray
+        #         spatial_extent = event.get('spatial_extent', 5)  # Default to 5 pixels if not available
+        #         max_intensity = event.get('max_intensity', 0)
+                
+        #         # Calculate radius based on spatial extent
+        #         # For circular patch, use radius = sqrt(area/pi)
+        #         radius = np.sqrt(spatial_extent / np.pi)
+                
+        #         # Create circle patch for each cosmic ray
+        #         circle = patches.Circle((x, y), radius, 
+        #                             linewidth=2, 
+        #                             edgecolor='red', 
+        #                             facecolor='none',
+        #                             alpha=0.8)
+        #         ax.add_patch(circle)
+                
+        #         # Add text label with event number and intensity
+        #         ax.annotate(f'{i+1}\n{max_intensity:.0f}DN', 
+        #                 xy=(x, y), 
+        #                 xytext=(5, 5), 
+        #                 textcoords='offset points',
+        #                 fontsize=8, 
+        #                 color='red',
+        #                 weight='bold',
+        #                 bbox=dict(boxstyle='round,pad=0.2', 
+        #                             facecolor='white', 
+        #                             alpha=0.7))
+                
+        #         # If pixel_coords are available, you could also outline the exact shape
+        #         if 'pixel_coords' in event:
+        #             # Get the bounding box of the cosmic ray
+        #             pixel_coords = event['pixel_coords']
+        #             if pixel_coords:
+        #                 y_coords, x_coords = zip(*pixel_coords)
+        #                 min_x, max_x = min(x_coords), max(x_coords)
+        #                 min_y, max_y = min(y_coords), max(y_coords)
+                        
+        #                 # Add a rectangle showing the bounding box (optional)
+        #                 rect = patches.Rectangle((min_x-0.5, min_y-0.5), 
+        #                                     max_x-min_x+1, max_y-min_y+1,
+        #                                     linewidth=1, 
+        #                                     edgecolor='orange', 
+        #                                     facecolor='none',
+        #                                     alpha=0.5,
+        #                                     linestyle='--')
+        #                 ax.add_patch(rect)
+            
+        #     # Add legend
+        #     from matplotlib.lines import Line2D
+        #     legend_elements = [
+        #         Line2D([0], [0], marker='o', color='w', markerfacecolor='none', 
+        #             markeredgecolor='red', markersize=10, label='Cosmic Ray (circle)'),
+        #         Line2D([0], [0], color='orange', linestyle='--', 
+        #             label='Bounding Box (dashed)')
+        #     ]
+        #     ax.legend(handles=legend_elements, loc='upper right')
+            
+        #     # Add summary text
+        #     ax.text(0.02, 0.98, f'Total Cosmic Rays: {len(events)}', 
+        #             transform=ax.transAxes, 
+        #             fontsize=12, 
+        #             verticalalignment='top',
+        #             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+            
+        #     plt.tight_layout()
+        #     plt.show()
+            
+        #     # Print summary
+        #     print(f"Displayed {len(events)} cosmic ray events on exposure frame {display_frame}")
+        #     for i, event in enumerate(events):
+        #         centroid = event.get('centroid', event.get('position', 'Unknown'))
+        #         intensity = event.get('max_intensity', 'Unknown')
+        #         extent = event.get('spatial_extent', 'Unknown')
+        #         first_frame = event.get('first_frame', 'Unknown')
+        #         print(f"Event {i+1}: Position {centroid}, Intensity {intensity} DN, "
+        #             f"Size {extent} pixels, First frame {first_frame}")
+
+        # else:
+        #     print("No cosmic ray events found in this exposure.")
+
+        events = exposure_results['snowballs']
+        if events:
+            for event in events:
+                sns.set_theme(style="white", palette="Purples")
+                palette = sns.color_palette('Reds', 6)
+
+                if 'centroid' in event:
+                    y, x = int(event['centroid'][0]), int(event['centroid'][1])
+                elif 'position' in event:
+                    y, x = event['position']
+
+                # Create figure with 2 subplots arranged vertically
+                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 10))
+                sns.set_theme(style="white", palette="Purples")
+                
+                # Extract region around event for spatial plot
+                radius = 20
+                y_start = max(0, y - radius)
+                y_end = min(data_cube.shape[1], y + radius)
+                x_start = max(0, x - radius)
+                x_end = min(data_cube.shape[2], x + radius)
+                
+                # Use frame where event first appears
+                frame_idx = event.get('first_frame', data_cube.shape[0] // 2)
+                region = data_cube[frame_idx, y_start:y_end, x_start:x_end]
+
+                # Plot 1: Spatial image of the telegraph noise region
+                im = ax1.imshow(region, cmap='Purples', aspect='auto')
+                ax1.set_title(f'Snowball at ({y},{x}) - Frame {frame_idx}')
+                ax1.set_xlabel('X pixel')
+                ax1.set_ylabel('Y pixel')
+                
+                cbar = plt.colorbar(im, ax=ax1, label='DN')
+
+                # Plot 2: Time series of the telegraph noise pixel
+                if 'time_series' in event:
+                    time_series = event['time_series']
+                    frames = np.arange(len(time_series))
+                    
+                    # Plot the time series
+                    ax2.plot(frames, time_series, linewidth=1, alpha=0.8, label='Pixel Signal', c = palette[3])
+                    
+                    # # Add horizontal lines for high and low states if available
+                    # if 'high_state_value' in event:
+                    #     ax2.axhline(y=event['high_state_value'], 
+                    #             linestyle='--', linewidth=2, alpha=0.7,
+                    #             label=f"High: {event['high_state_value']:.1f} DN")
+                    # if 'low_state_value' in event:
+                    #     ax2.axhline(y=event['low_state_value'], 
+                    #             linestyle='--', linewidth=2, alpha=0.7,
+                    #             label=f"Low: {event['low_state_value']:.1f} DN")
+                    
+                    ax2.set_xlabel('Frame Index')
+                    ax2.set_ylabel('Pixel Value (DN)')
+                    ax2.set_title(f'Time Series - Pixel ({y},{x})')
+                    ax2.grid(True, alpha=0.3)
+                    ax2.legend()
+                    
+                    # Add some statistics to the title if available
+                    title_parts = [f'Time Series - Pixel ({y},{x})']
+                    if 'amplitude' in event:
+                        title_parts.append(f'Amplitude: {event["amplitude"]:.1f} DN')
+                    if 'frequency' in event:
+                        title_parts.append(f'Frequency: {event["frequency"]:.3f} Hz')
+                    ax2.set_title(' | '.join(title_parts))
+                    
+                else:
+                    # If no time series data, extract it from data_cube
+                    pixel_time_series = data_cube[:, y, x]
+                    frames = np.arange(len(pixel_time_series))
+                    
+                    ax2.plot(frames, pixel_time_series, 'b-', linewidth=1, alpha=0.8)
+                    ax2.set_xlabel('Frame Index')
+                    ax2.set_ylabel('Pixel Value (DN)')
+                    ax2.set_title(f'Time Series - Pixel ({y},{x})')
+                    ax2.grid(True, alpha=0.3)
+
+                
+                print(event.get('first_frame', data_cube.shape[0] // 2))
+
+                plt.tight_layout()
+                plt.show()
+
         # events = exposure_results['telegraph_noise']
         # if events:
         #     for event in events:
@@ -547,91 +745,91 @@ class PlotManager:
         #         plt.tight_layout()
         #         plt.show()
 
-        events = exposure_results['cosmic_rays']
-        if events:
-            for event in events:
-                sns.set_theme(style="white", palette="Blues")
-                palette = sns.color_palette('Blues', 6)
+        # events = exposure_results['cosmic_rays']
+        # if events:
+        #     for event in events:
+        #         sns.set_theme(style="white", palette="Blues")
+        #         palette = sns.color_palette('Blues', 6)
 
-                if 'centroid' in event:
-                    y, x = int(event['centroid'][0]), int(event['centroid'][1])
-                elif 'position' in event:
-                    y, x = event['position']
+        #         if 'centroid' in event:
+        #             y, x = int(event['centroid'][0]), int(event['centroid'][1])
+        #         elif 'position' in event:
+        #             y, x = event['position']
 
-                # Create figure with 2 subplots arranged vertically
-                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 10))
-                sns.set_theme(style="white", palette="Blues")
+        #         # Create figure with 2 subplots arranged vertically
+        #         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 10))
+        #         sns.set_theme(style="white", palette="Blues")
                 
-                # Extract region around event for spatial plot
-                radius = 20
-                y_start = max(0, y - radius)
-                y_end = min(data_cube.shape[1], y + radius)
-                x_start = max(0, x - radius)
-                x_end = min(data_cube.shape[2], x + radius)
+        #         # Extract region around event for spatial plot
+        #         radius = 20
+        #         y_start = max(0, y - radius)
+        #         y_end = min(data_cube.shape[1], y + radius)
+        #         x_start = max(0, x - radius)
+        #         x_end = min(data_cube.shape[2], x + radius)
                 
-                # Use frame where event first appears
-                frame_idx = event.get('first_frame', data_cube.shape[0] // 2)
-                region = data_cube[frame_idx, y_start:y_end, x_start:x_end]
+        #         # Use frame where event first appears
+        #         frame_idx = event.get('first_frame', data_cube.shape[0] // 2)
+        #         region = data_cube[frame_idx, y_start:y_end, x_start:x_end]
 
-                # Plot 1: Spatial image of the telegraph noise region
-                im = ax1.imshow(region, cmap='Blues', aspect='auto')
-                ax1.set_title(f'Cosmic Ray at ({y},{x}) - Frame {frame_idx}')
-                ax1.set_xlabel('X pixel')
-                ax1.set_ylabel('Y pixel')
+        #         # Plot 1: Spatial image of the telegraph noise region
+        #         im = ax1.imshow(region, cmap='Blues', aspect='auto')
+        #         ax1.set_title(f'Cosmic Ray at ({y},{x}) - Frame {frame_idx}')
+        #         ax1.set_xlabel('X pixel')
+        #         ax1.set_ylabel('Y pixel')
                 
-                cbar = plt.colorbar(im, ax=ax1, label='DN')
+        #         cbar = plt.colorbar(im, ax=ax1, label='DN')
 
-                # Plot 2: Time series of the telegraph noise pixel
-                # if 'time_series' in event:
-                #     time_series = event['time_series']
-                #     frames = np.arange(len(time_series))
+        #         # Plot 2: Time series of the telegraph noise pixel
+        #         # if 'time_series' in event:
+        #         #     time_series = event['time_series']
+        #         #     frames = np.arange(len(time_series))
                 
-                # Plot the time series
-                time_series = data_cube[:, y, x]
-                frames = np.arange(len(data_cube))
+        #         # Plot the time series
+        #         time_series = data_cube[:, y, x]
+        #         frames = np.arange(len(data_cube))
 
-                ax2.plot(frames, time_series, linewidth=1, alpha=0.8, label='Pixel Signal', c = palette[3])
+        #         ax2.plot(frames, time_series, linewidth=1, alpha=0.8, label='Pixel Signal', c = palette[3])
                 
-                # # Add horizontal lines for high and low states if available
-                # if 'high_state_value' in event:
-                #     ax2.axhline(y=event['high_state_value'], 
-                #             linestyle='--', linewidth=2, alpha=0.7,
-                #             label=f"High: {event['high_state_value']:.1f} DN")
-                # if 'low_state_value' in event:
-                #     ax2.axhline(y=event['low_state_value'], 
-                #             linestyle='--', linewidth=2, alpha=0.7,
-                #             label=f"Low: {event['low_state_value']:.1f} DN")
+        #         # # Add horizontal lines for high and low states if available
+        #         # if 'high_state_value' in event:
+        #         #     ax2.axhline(y=event['high_state_value'], 
+        #         #             linestyle='--', linewidth=2, alpha=0.7,
+        #         #             label=f"High: {event['high_state_value']:.1f} DN")
+        #         # if 'low_state_value' in event:
+        #         #     ax2.axhline(y=event['low_state_value'], 
+        #         #             linestyle='--', linewidth=2, alpha=0.7,
+        #         #             label=f"Low: {event['low_state_value']:.1f} DN")
                 
-                ax2.set_xlabel('Frame Index')
-                ax2.set_ylabel('Pixel Value (DN)')
-                ax2.set_title(f'Time Series - Pixel ({y},{x})')
-                ax2.grid(True, alpha=0.3)
-                ax2.legend()
+        #         ax2.set_xlabel('Frame Index')
+        #         ax2.set_ylabel('Pixel Value (DN)')
+        #         ax2.set_title(f'Time Series - Pixel ({y},{x})')
+        #         ax2.grid(True, alpha=0.3)
+        #         ax2.legend()
                 
-                # Add some statistics to the title if available
-                title_parts = [f'Time Series - Pixel ({y},{x})']
-                if 'amplitude' in event:
-                    title_parts.append(f'Amplitude: {event["amplitude"]:.1f} DN')
-                if 'frequency' in event:
-                    title_parts.append(f'Frequency: {event["frequency"]:.3f} Hz')
-                ax2.set_title(' | '.join(title_parts))
+        #         # Add some statistics to the title if available
+        #         title_parts = [f'Time Series - Pixel ({y},{x})']
+        #         if 'amplitude' in event:
+        #             title_parts.append(f'Amplitude: {event["amplitude"]:.1f} DN')
+        #         if 'frequency' in event:
+        #             title_parts.append(f'Frequency: {event["frequency"]:.3f} Hz')
+        #         ax2.set_title(' | '.join(title_parts))
                     
-                # else:
-                #     # If no time series data, extract it from data_cube
-                #     pixel_time_series = data_cube[:, y, x]
-                #     frames = np.arange(len(pixel_time_series))
+        #         # else:
+        #         #     # If no time series data, extract it from data_cube
+        #         #     pixel_time_series = data_cube[:, y, x]
+        #         #     frames = np.arange(len(pixel_time_series))
                     
-                #     ax2.plot(frames, pixel_time_series, 'b-', linewidth=1, alpha=0.8)
-                #     ax2.set_xlabel('Frame Index')
-                #     ax2.set_ylabel('Pixel Value (DN)')
-                #     ax2.set_title(f'Time Series - Pixel ({y},{x})')
-                #     ax2.grid(True, alpha=0.3)
+        #         #     ax2.plot(frames, pixel_time_series, 'b-', linewidth=1, alpha=0.8)
+        #         #     ax2.set_xlabel('Frame Index')
+        #         #     ax2.set_ylabel('Pixel Value (DN)')
+        #         #     ax2.set_title(f'Time Series - Pixel ({y},{x})')
+        #         #     ax2.grid(True, alpha=0.3)
 
                 
-                print(event.get('first_frame', data_cube.shape[0] // 2))
+        #         print(event.get('first_frame', data_cube.shape[0] // 2))
 
-                plt.tight_layout()
-                plt.show()
+        #         plt.tight_layout()
+        #         plt.show()
 
         
 
